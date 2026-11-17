@@ -1,46 +1,229 @@
-Erstelle mir den vollständigen Python-Code für eine interaktive Streamlit-Web-App (app.py), die eine detaillierte 5-Jahres-Marketingsimulation für unser Produkt abbildet.
+import numpy as np
+import pandas as pd
+import streamlit as st
 
-PRODUKT: Active Vision, eine digitale Skibrille mit interaktiver, kostenloser App, entwickelt in Kooperation mit Oakley (weiterer Partner: Ski Amadé).
-File "/mount/src/marketing-sim-gruppe2/app.py", line 4
-- Basis (Ski): Kamera, Pisteninfo, Pulsmessung, GPS, Mikro-Display, Ladecase
-- Pro (Freeride): zusätzlich Magnetometer (Richtungspfeil), Satellitenmodul (SOS), Link-up-Funk (Brille zu Brille)
-- Zielgruppe: 15 bis 50 Jahre (Freerider, Skilehrer, erfahrene Skifahrer)
-- Herstellkosten pro Brille: Basis 276 €, Pro 339 €
-- Einmalige Produktkosten (nur Jahr 1): 450.000 € (Entwicklung/Design 200.000, Werkzeuge 80.000, Zertifizierungen 50.000, App 120.000)
-- Laufend pro Nutzer und Jahr: Cloud 2 € (alle Nutzer), Satellitendienst 45 € (nur Pro). Diese Kosten fallen für den gesamten Nutzerbestand an, also für alle seit Jahr 1 verkauften Brillen.
-- Oakley-Lizenz: noch offen, derzeit mit 0 € angesetzt
+st.set_page_config(page_title="Active Vision – 5-Jahres-Marketingsimulation", layout="wide")
 
-PRICE (alle Preise netto, Österreich, USt 20 %):
-- Listenpreis: Basis 949,99 € (brutto 1.139,99 €), Pro 1.449,99 € (brutto 1.739,99 €)
-- Rabatte: Ski Amadé (Basis -10 %, Pro -15 %), Launch (-5 % nur in Jahr 1), Buddy (nur Pro, -150 €). Im Durchschnitt ergibt das ca. 5 % Rabatt.
-- Gewinn pro Brille im Direktverkauf ohne Rabatt: Basis 635,54 €, Pro 1.020,04 €
-- Gewinn pro Brille mit Ski Amadé + Launch: Basis 499,86 €, Pro 745,10 €
+PRODUKT = "Active Vision – Smarte Ski- & Freeride-Brille (Basis Ski / Pro Freeride)"
+JAHRE = [1, 2, 3, 4, 5]
 
-PLACE:
-- Online-Direktvertrieb und Bründl-Sports-Filialen (Handelsspanne ca. 30 %), Versand DHL (80 %) und FedEx (20 %)
-- Variable Kosten pro Brille im Direktverkauf: Versand 19 €, Retouren 3,20 €, Zahlungsgebühren 1,5 % vom Preis. Beim Verkauf über Bründl entfallen diese Kosten, dort gelten nur 2 € Sammelversand pro Brille.
-- Fixkosten Place: 304.756 € pro Jahr, davon Basis-HQ 276.256 € (Büro Frankfurt 32.256, HQ-Team 220.000, Lager 24.000), Online-Shop 21.000 € (Aufbau 15.000 + Betrieb 6.000), 5 Testdisplays bei Bründl 7.500 €
+# ---------------------------------------------------------------------------
+# Konstanten (aus der Kalkulation Active Vision)
+# ---------------------------------------------------------------------------
+ANTEIL_PRO = 0.30
+LISTENPREIS_BASIS, LISTENPREIS_PRO = 949.99, 1449.99
+HERSTELL_BASIS, HERSTELL_PRO = 276.0, 339.0
+SATELLIT_PRO = 45.0
+CLOUD = 2.0
+VERSAND = 0.8 * 15 + 0.2 * 35           # 19 €
+RETOUREN = 0.08 * 40                    # 3,20 €
+ZAHLUNG = 0.015
+VERSAND_BRUENDL = 2.0
+HANDELSSPANNE = 0.30
+BUERO = 80 * 28 * 12 * 1.2              # 32.256 €
+TEAM = 4 * 55000
+LAGER = 24000
+SHOP_AUFBAU = 15000
+SHOP_BETRIEB = 6000
+TESTDISPLAYS = 5 * 1500
 
-PROMOTION (gesamt 187.000 € pro Jahr):
-Social Media Content 15.000, Social Media Ads 25.000, Profisportler (mit Oakley) 30.000, Skischulen 12.000, Ski Amadé 20.000, Testfahrten bei Bründl 10.000, Skirennen-Sponsoring 15.000, TV-Spot Sportsender 60.000.
+LISTENPREIS_MIX = (1 - ANTEIL_PRO) * LISTENPREIS_BASIS + ANTEIL_PRO * LISTENPREIS_PRO
+STUECKKOSTEN_MIX = (1 - ANTEIL_PRO) * HERSTELL_BASIS + ANTEIL_PRO * HERSTELL_PRO
+LAUFEND_MIX = ANTEIL_PRO * SATELLIT_PRO + CLOUD
 
-KALIBRIERUNG (Jahr 1 mit Standardwerten, soll ungefähr so herauskommen):
-- 2.000 Brillen (70 % Basis, 30 % Pro), Verkauf komplett online
-- Ø Nettopreis nach Rabatten: 1.045,36 €, Umsatz ca. 2.090.721 €
-- Fixkosten gesamt: 941.756 €, Gewinn (EBIT) ca. 452.405 € (Marge ca. 21,6 %)
-- Break-even: ca. 1.352 Brillen
+# Annahmen für die Simulation
+QUALITAET = {
+    "Standard": {"kosten": 1.00, "nachfrage": 1.00, "preisreferenz": 1.00},
+    "Premium": {"kosten": 1.15, "nachfrage": 1.10, "preisreferenz": 1.08},
+    "Luxus": {"kosten": 1.35, "nachfrage": 1.15, "preisreferenz": 1.15},
+}
+ELASTIZITAET = 1.6
+BASIS_NACHFRAGE = 1700      # Einheiten/Jahr bei Referenzbedingungen
+MARKT_GESAMT = 12000        # Marktpotenzial über 5 Jahre (Sättigung)
+MARKT_REICHWEITE = {"online": 0.50, "stationaer": 0.30, "markt": 0.20}
+MARKTPLATZ_PROVISION = 0.15
+MARKTPLATZ_FIX = 3000
+RATENZAHLUNG_NACHFRAGE = 1.08
+RATENZAHLUNG_GEBUEHR = 0.015
+MARKEN_ABKLINGEN = 0.75
+KOSTENDEGRESSION = 0.03
 
-AUFBAU DER SEITENLEISTE (Sidebar) in 4 aufklappbaren Sektionen (st.expander):
-1. Product: Slider für F&E-Budget (€/Jahr, Standard 200.000), Slider für den Anteil Pro in % (Standard 30), Auswahlfeld Materialqualität (Standard, Premium, Luxus; Standard entspricht den Herstellkosten oben, Premium und Luxus erhöhen Stückkosten und Nachfrage), Slider für Packaging & Design (€/Jahr, Standard 0, da die Verpackung bereits in den Herstellkosten steckt). Die übrigen einmaligen Kosten (Werkzeuge, Zertifizierungen, App = 250.000 €) fallen fix nur in Jahr 1 an.
-2. Price: Slider für den Verkaufspreis (€) getrennt für Basis und Pro, Slider für Rabattaktionen in % (Standard 5), Checkbox für Ratenzahlung (erhöht die Nachfrage, kostet Finanzierungsgebühr/Zahlungsausfälle).
-3. Place: Checkboxen für Onlineshop, Stationärer Handel (Bründl Sports) und Marktplätze (inkl. Fixkosten und Provisionen; für Marktplätze plausible Annahmen treffen und im Code kennzeichnen). Das Basis-HQ (276.256 €/Jahr) fällt immer an.
-4. Promotion (mit Live-Teilsumme): Einzelne Slider für Social Media Content, Social Media Ads, Profisportler/Sponsoring, Skischulen, Ski Amadé, Testfahrten und Skirennen-Sponsoring sowie TV-Spot (€/Jahr, Standardwerte wie oben). Zeige die Teilsumme Promotion (€/Jahr) live an.
 
-SIMULATIONSLOGIK (Jahr 1 bis 5) UND VISUALISIERUNG:
-- Berechne Absatz, Umsatz, Produktions-, Vertriebs- und Marketingkosten sowie Gewinn (EBIT) über 5 Jahre.
-- Berücksichtige Preiselastizität, Sofortwirkung (Ads, TV, Skirennen) gegenüber langfristigem Markenaufbau (Content, Sponsoring, Ski Amadé, F&E mit Carry-over und Abklingrate) und Marktsättigung (begrenztes Marktpotenzial, abnehmende Grenzerträge der Werbung). Alle Annahmen als Konstanten am Anfang des Codes dokumentieren.
-- Launch-Rabatt gilt nur in Jahr 1. Recurring-Kosten (Cloud, Satellitendienst) laufen auf dem Nutzerbestand.
-- Mit den Standardwerten soll Jahr 1 die Kalibrierung oben ungefähr treffen.
-- Zeige oben 4 KPI-Karten (5J-Umsatz, 5J-Gewinn, Absatzmenge gesamt, Umsatzrendite %), darunter ein Liniendiagramm (Umsatz/Kosten/Gewinn), ein gestapeltes Balkendiagramm (Kostenstruktur nach Teilsummen) und eine Jahrestabelle.
-- Zahlen im deutschen Format (1.234,56 €), alle Texte auf Deutsch.
-- Nutze ausschließlich streamlit, pandas und numpy. Der Code soll vollständig, kommentiert und direkt mit "streamlit run app.py" lauffähig sein.
+def sat(x, ref):
+    return 1 - np.exp(-x / ref)
+
+
+def simuliere(p):
+    q = QUALITAET[p["qualitaet"]]
+    ref_preis = LISTENPREIS_MIX * 0.95 * q["preisreferenz"]
+    preis_netto = p["preis"] * (1 - p["rabatt"] / 100)
+    preisfaktor = (preis_netto / ref_preis) ** (-ELASTIZITAET)
+
+    reichweiten = {
+        "online": MARKT_REICHWEITE["online"] if p["online"] else 0.0,
+        "stationaer": MARKT_REICHWEITE["stationaer"] if p["stationaer"] else 0.0,
+        "markt": MARKT_REICHWEITE["markt"] if p["markt"] else 0.0,
+    }
+    reichweite = 1 - np.prod([1 - r for r in reichweiten.values()])
+    summe_r = sum(reichweiten.values())
+    anteile = {k: (v / summe_r if summe_r > 0 else 0.0) for k, v in reichweiten.items()}
+
+    sofort = (
+        1
+        + 0.60 * sat(p["ads"], 30000)
+        + 0.25 * sat(p["tv"], 60000)
+        + 0.15 * sat(p["sponsoring"], 87000)
+    )
+    marken_input = (
+        p["content"] + 0.6 * p["sponsoring"] + 0.3 * p["tv"] + 0.8 * p["fe"] + 0.4 * p["packaging"]
+    ) / 100000
+    ratenfaktor = RATENZAHLUNG_NACHFRAGE if p["raten"] else 1.0
+    zahlung = ZAHLUNG + (RATENZAHLUNG_GEBUEHR if p["raten"] else 0.0)
+
+    promotion = p["content"] + p["ads"] + p["sponsoring"] + p["tv"]
+    produkt_fix = p["fe"] + p["packaging"]
+
+    zeilen = []
+    marke = 0.0
+    kumuliert = 0.0
+    for j in JAHRE:
+        marke_wirksam = MARKEN_ABKLINGEN * marke + 0.4 * marken_input
+        marke = MARKEN_ABKLINGEN * marke + marken_input
+        markenfaktor = 1 + 0.9 * (1 - np.exp(-marke_wirksam / 3))
+        saettigung = max(0.05, 1 - kumuliert / MARKT_GESAMT)
+
+        absatz = (
+            BASIS_NACHFRAGE * reichweite * preisfaktor * q["nachfrage"]
+            * ratenfaktor * sofort * markenfaktor * saettigung
+        )
+        absatz = max(0.0, absatz)
+        kumuliert += absatz
+
+        umsatz = absatz * preis_netto
+
+        stueckkosten = (
+            STUECKKOSTEN_MIX * q["kosten"] * (1 - KOSTENDEGRESSION) ** (j - 1) + LAUFEND_MIX
+        )
+        produktion = absatz * stueckkosten + produkt_fix
+
+        n_on, n_st, n_mk = (absatz * anteile[k] for k in ("online", "stationaer", "markt"))
+        vertrieb = (
+            (n_on + n_mk) * (VERSAND + RETOUREN)
+            + n_st * VERSAND_BRUENDL
+            + (n_on + n_mk) * preis_netto * zahlung
+            + n_st * preis_netto * HANDELSSPANNE
+            + n_mk * preis_netto * MARKTPLATZ_PROVISION
+        )
+        fix_place = BUERO + TEAM + LAGER
+        if p["online"]:
+            fix_place += SHOP_BETRIEB + (SHOP_AUFBAU if j == 1 else 0)
+        if p["stationaer"] and j == 1:
+            fix_place += TESTDISPLAYS
+        if p["markt"]:
+            fix_place += MARKTPLATZ_FIX
+        vertrieb += fix_place
+
+        kosten = produktion + vertrieb + promotion
+        zeilen.append(
+            {
+                "Jahr": j,
+                "Absatz (Stück)": absatz,
+                "Umsatz (€)": umsatz,
+                "Produktionskosten (€)": produktion,
+                "Vertriebskosten (€)": vertrieb,
+                "Marketingkosten (€)": promotion,
+                "Gesamtkosten (€)": kosten,
+                "Gewinn EBIT (€)": umsatz - kosten,
+            }
+        )
+    return pd.DataFrame(zeilen)
+
+
+# ---------------------------------------------------------------------------
+# Sidebar
+# ---------------------------------------------------------------------------
+st.sidebar.title("Parameter")
+
+with st.sidebar.expander("1. Product", expanded=True):
+    fe = st.slider("F&E-Budget (€/Jahr)", 0, 300000, 90000, 5000)
+    qualitaet = st.selectbox("Materialqualität", list(QUALITAET.keys()))
+    packaging = st.slider("Packaging & Design (€/Jahr)", 0, 100000, 10000, 1000)
+
+with st.sidebar.expander("2. Price", expanded=True):
+    preis = st.slider("Verkaufspreis netto (€)", 600.0, 1800.0, round(LISTENPREIS_MIX, 2), 10.0)
+    rabatt = st.slider("Rabattaktionen (%)", 0, 30, 5, 1)
+    raten = st.checkbox("Ratenzahlung anbieten", value=False)
+
+with st.sidebar.expander("3. Place", expanded=True):
+    online = st.checkbox(
+        "Onlineshop (Aufbau 15.000 €, Betrieb 6.000 €/Jahr, Versand & Zahlungsgebühren)", value=True
+    )
+    stationaer = st.checkbox(
+        "Stationärer Handel / On-Site-Shop (Testdisplays 7.500 €, Handelsspanne 30 %)", value=True
+    )
+    markt = st.checkbox(
+        "Marktplätze (Fixkosten 3.000 €/Jahr, Provision 15 %)", value=False
+    )
+
+with st.sidebar.expander("4. Promotion", expanded=True):
+    content = st.slider("Social Media Content (€/Jahr)", 0, 100000, 15000, 1000)
+    ads = st.slider("Social Media Ads (€/Jahr)", 0, 150000, 25000, 1000)
+    sponsoring = st.slider("Sponsoring / Influencer (€/Jahr)", 0, 200000, 87000, 1000)
+    tv = st.slider("TV / Klassische Werbung (€/Jahr)", 0, 200000, 60000, 1000)
+    teilsumme = content + ads + sponsoring + tv
+    st.metric("Teilsumme Promotion (€/Jahr)", f"{teilsumme:,.0f} €".replace(",", "."))
+
+params = dict(
+    fe=fe, qualitaet=qualitaet, packaging=packaging,
+    preis=preis, rabatt=rabatt, raten=raten,
+    online=online, stationaer=stationaer, markt=markt,
+    content=content, ads=ads, sponsoring=sponsoring, tv=tv,
+)
+df = simuliere(params)
+
+# ---------------------------------------------------------------------------
+# Hauptbereich
+# ---------------------------------------------------------------------------
+st.title("5-Jahres-Marketingsimulation")
+st.caption(PRODUKT)
+
+
+def eur(x):
+    return f"{x:,.0f} €".replace(",", ".")
+
+
+umsatz5 = df["Umsatz (€)"].sum()
+gewinn5 = df["Gewinn EBIT (€)"].sum()
+absatz5 = df["Absatz (Stück)"].sum()
+rendite = gewinn5 / umsatz5 * 100 if umsatz5 > 0 else 0.0
+
+k1, k2, k3, k4 = st.columns(4)
+with k1:
+    with st.container(border=True):
+        st.metric("5J-Umsatz", eur(umsatz5))
+with k2:
+    with st.container(border=True):
+        st.metric("5J-Gewinn (EBIT)", eur(gewinn5))
+with k3:
+    with st.container(border=True):
+        st.metric("Absatzmenge (5J)", f"{absatz5:,.0f} Stück".replace(",", "."))
+with k4:
+    with st.container(border=True):
+        st.metric("Umsatzrendite", f"{rendite:.1f} %".replace(".", ","))
+
+st.subheader("Umsatz, Kosten und Gewinn")
+linie = df.set_index("Jahr")[["Umsatz (€)", "Gesamtkosten (€)", "Gewinn EBIT (€)"]]
+st.line_chart(linie)
+
+st.subheader("Kostenstruktur nach Teilsummen")
+kosten = df.set_index("Jahr")[["Produktionskosten (€)", "Vertriebskosten (€)", "Marketingkosten (€)"]]
+st.bar_chart(kosten, stack=True)
+
+st.subheader("Jahrestabelle")
+tabelle = df.set_index("Jahr")
+st.dataframe(
+    tabelle.style.format(
+        {c: "{:,.0f}" for c in tabelle.columns}, thousands="."
+    ),
+    use_container_width=True,
+)
