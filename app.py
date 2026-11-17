@@ -1,6 +1,7 @@
 Erstelle mir den vollständigen Python-Code für eine interaktive Streamlit-Web-App (app.py), die eine detaillierte 5-Jahres-Marketingsimulation für unser Produkt abbildet.
 
 PRODUKT: Active Vision, eine digitale Skibrille mit interaktiver, kostenloser App, entwickelt in Kooperation mit Oakley (weiterer Partner: Ski Amadé).
+File "/mount/src/marketing-sim-gruppe2/app.py", line 4
 - Basis (Ski): Kamera (4K), Pisteninfo, Pulsmessung, GPS, Mikro-Display, Ladecase
 - Pro (Freeride): zusätzlich Magnetometer (Richtungspfeil), Satellitenmodul (SOS), Link-up-Funk (Brille zu Brille)
 - Zielgruppe: 15 bis 50 Jahre (Freerider, Skilehrer, erfahrene Skifahrer)
